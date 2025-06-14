@@ -9,7 +9,6 @@ RUN apt-get update && apt-get install -y \
     libxrender-dev \
     libgomp1 \
     libgl1-mesa-glx \
-    libgthread-2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install the project into `/app`
