@@ -5,7 +5,7 @@ from io import BytesIO
 from typing import Tuple
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import Message, ContentType
+from aiogram.types import Message, ContentType, ChatMemberUpdated
 from config import Config
 from agents import search_query_agent, summary_agent
 from telegram_client import TelegramSearchClient
@@ -109,6 +109,48 @@ async def cmd_debug(message: Message):
         await message.answer(f"Debug error: {str(e)}")
 
 
+@dp.my_chat_member()
+async def on_bot_added_to_chat(update: ChatMemberUpdated):
+    """Handle when bot is added to a chat"""
+    try:
+        # Check if bot was added to the chat
+        if (update.new_chat_member.status in ['member', 'administrator'] and 
+            update.old_chat_member.status in ['left', 'kicked']):
+            
+            # Bot was added to the chat
+            chat = update.chat
+            
+            # Only send welcome in groups/supergroups
+            if chat.type in ['group', 'supergroup']:
+                welcome_message = (
+                    "👋 **Hello! I'm Summary Bot!**\n\n"
+                    f"I've been added to **{chat.title}** and I'm ready to help!\n\n"
+                    "**🔍 What I can do:**\n"
+                    "• Search and summarize your chat messages\n"
+                    "• Extract text from images (OCR)\n"
+                    "• Answer questions in multiple languages\n\n"
+                    "**📝 How to use:**\n"
+                    "• `/ask <question>` - Ask me anything about your chat\n"
+                    "• `/status` - Check my health status\n\n"
+                    "**⚠️ Important:**\n"
+                    "I only know about messages sent **after** this moment. "
+                    "I cannot search through old messages that were sent before I joined.\n\n"
+                    "**🚀 Try me:**\n"
+                    "`/ask what are we discussing?`\n"
+                    "`/ask коли буде зустріч?`"
+                )
+                
+                await bot.send_message(
+                    chat_id=chat.id,
+                    text=welcome_message,
+                    parse_mode="Markdown"
+                )
+                logger.info(f"Bot added to chat: {chat.title} (ID: {chat.id})")
+                
+    except Exception as e:
+        logger.error(f"Error handling bot added to chat: {e}")
+
+
 @dp.message(Command("ask"))
 async def cmd_ask(message: Message):
     """Handle /ask command"""
@@ -123,21 +165,21 @@ async def cmd_ask(message: Message):
     chat_id = message.chat.id
     
     try:
+        # Send initial processing message that we'll edit later
+        processing_msg = await message.answer("📱 Searching...")
+        
         # Generate search query using Pydantic AI
-        await message.answer("🔍 Generating search query...")
         query_result = await search_query_agent.run(question)
         search_query = query_result.output.query
         
-        await message.answer(f"📱 Searching for: *{search_query}*", parse_mode="Markdown")
-        
-        # Search messages using Pyrogram
+        # Search messages using database
         search_result = await search_client.search_messages(
             chat_id=chat_id,
             query=search_query
         )
         
         if not search_result.messages:
-            await message.answer("No messages found for your query.")
+            await processing_msg.edit_text("No messages found for your query.")
             return
             
         # Format messages for summary
@@ -147,7 +189,6 @@ async def cmd_ask(message: Message):
         ])
         
         # Generate summary using Pydantic AI
-        await message.answer("📝 Generating summary...")
         summary_result = await summary_agent.run(
             f"Question: {question}\n\nMessages:\n{messages_text}"
         )
@@ -175,7 +216,7 @@ async def cmd_ask(message: Message):
                 )
         
         response = "\n".join(response_parts)
-        await message.answer(response, parse_mode="Markdown", disable_web_page_preview=True)
+        await processing_msg.edit_text(response, parse_mode="Markdown", disable_web_page_preview=True)
         
     except Exception as e:
         logger.error(f"Error processing /ask command: {e}")
