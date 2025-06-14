@@ -42,10 +42,23 @@ ocr_workers = []
 async def cmd_start(message: Message):
     """Handle /start command"""
     await message.answer(
-        "Welcome! Use /ask <your question> to search and summarize messages.\n"
-        "Example: /ask what did John say about the meeting?\n\n"
-        "I can also process images and extract text from them!\n"
-        "Use /status to see OCR queue status."
+        "🤖 **Welcome to Summary Bot!**\n\n"
+        "I can help you search and summarize messages using AI.\n\n"
+        "**📝 Commands:**\n"
+        "• `/ask <question>` - Search and answer questions\n"
+        "• `/status` - Show bot health and queue status\n\n"
+        "**🔍 What I can do:**\n"
+        "• Search through text messages\n"
+        "• Extract and search text from images (OCR)\n"
+        "• Answer in the same language you ask\n"
+        "• Provide links to original messages\n\n"
+        "**⚠️ Important:**\n"
+        "I only know about messages sent **after** I was added to this chat. "
+        "I cannot search through old messages that were sent before I joined.\n\n"
+        "**📱 Example:**\n"
+        "`/ask what did John say about the meeting?`\n"
+        "`/ask коли буде наступна зустріч?`",
+        parse_mode="Markdown"
     )
 
 

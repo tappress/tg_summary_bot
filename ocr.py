@@ -64,7 +64,17 @@ def extract_text_from_image(image_bytes: bytes) -> Optional[str]:
         text_parts = []
         total_confidence = 0
         
-        for (bbox, text, confidence) in results:
+        for result in results:
+            # Handle different return formats from EasyOCR
+            if len(result) == 3:
+                bbox, text, confidence = result
+            elif len(result) == 2:
+                bbox, text = result
+                confidence = 1.0  # Default confidence if not provided
+            else:
+                logger.warning(f"Unexpected EasyOCR result format: {result}")
+                continue
+                
             # Filter out low-confidence results (< 0.3)
             if confidence > 0.3:
                 text = text.strip()
