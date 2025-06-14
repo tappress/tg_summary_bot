@@ -14,7 +14,29 @@ services:
     volumes:
       - mongodb_data:/data/db
       - mongodb_config:/data/configdb
+    networks:
+      - bot_network
+
+  bot:
+    build: .
+    container_name: tg_summary_bot
+    restart: unless-stopped
+    depends_on:
+      - mongodb
+    environment:
+      - MONGODB_URL=mongodb://admin:password@mongodb:27017
+      - MONGODB_DATABASE=telegram_bot
+    env_file:
+      - .env
+    networks:
+      - bot_network
+    profiles:
+      - server
 
 volumes:
   mongodb_data:
   mongodb_config:
+
+networks:
+  bot_network:
+    driver: bridge
