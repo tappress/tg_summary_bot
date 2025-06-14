@@ -18,9 +18,13 @@ search_query_agent = Agent(
     ),
     result_type=SearchQuery,
     system_prompt=(
-        "You are a search query generator for Telegram chats. "
+        "You are a search query generator for Telegram chats that may contain OCR-extracted text. "
         "Generate concise search queries (1-3 words) based on user questions. "
-        "Focus on key terms that would help find relevant messages. "
+        "IMPORTANT: Consider that text may have OCR errors where similar characters get confused. "
+        "For Ukrainian text, consider these common OCR mistakes: "
+        "з/ц, и/і, а/о, н/п, е/є, р/p, у/y. "
+        "If the user mentions 'резензія', also consider 'рецензія' (review). "
+        "Focus on the core meaning and use the most likely correct spelling. "
         "Extract the main subject or keyword from the question."
     )
 )

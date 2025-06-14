@@ -67,16 +67,48 @@ class MessageDatabase:
         return messages
     
     async def search_messages_regex(self, chat_id: int, query: str, limit: int = 10) -> List[TelegramMessage]:
-        """Search messages using regex (fallback if text search doesn't work well)"""
+        """Search messages using regex with OCR error handling"""
         messages = []
         
-        # Try multiple search patterns for better matching
-        search_patterns = [
-            query,  # Original query
-            query.lower(),  # Lowercase
-            query.upper(),  # Uppercase
-            query.capitalize(),  # Capitalized
-        ]
+        # Create fuzzy patterns to handle OCR errors
+        def create_fuzzy_patterns(text):
+            # Common OCR character substitutions for Ukrainian
+            substitutions = {
+                'з': '[зц]',  # з can be misread as ц
+                'ц': '[цз]',  # ц can be misread as з  
+                'и': '[иі]',  # и can be misread as і
+                'і': '[іи]',  # і can be misread as и
+                'а': '[ао]',  # а can be misread as о
+                'о': '[оа]',  # о can be misread as а
+                'е': '[ее]',  # handle е variations
+                'н': '[нп]',  # н can be misread as п
+                'п': '[пн]',  # п can be misread as н
+                'р': '[рp]',  # р can be misread as p
+                'у': '[уy]',  # у can be misread as y
+            }
+            
+            patterns = []
+            
+            # Add original patterns
+            patterns.extend([text, text.lower(), text.upper(), text.capitalize()])
+            
+            # Create fuzzy pattern with substitutions
+            fuzzy_text = text.lower()
+            for original, replacement in substitutions.items():
+                fuzzy_text = fuzzy_text.replace(original, replacement)
+            
+            patterns.append(fuzzy_text)
+            
+            # Also try partial word matching (useful for longer words)
+            if len(text) > 4:
+                # Create pattern that matches if most characters are present
+                core_text = text[1:-1].lower()  # Remove first and last char
+                patterns.append(f".*{core_text}.*")
+            
+            return patterns
+        
+        # Generate search patterns with OCR error handling
+        search_patterns = create_fuzzy_patterns(query)
         
         # Remove duplicates while preserving order
         unique_patterns = []
@@ -140,10 +172,13 @@ class MessageDatabase:
         # Get sample texts to see what we have
         sample_cursor = self.messages_collection.find(
             {"chat_id": chat_id}
-        ).limit(3)
+        ).sort("date", -1).limit(5)  # Get latest 5 messages
         
         async for doc in sample_cursor:
-            result["sample_texts"].append(doc.get("text", "")[:100] + "...")
+            text = doc.get("text", "")
+            # Show first 200 chars instead of 100 for better debugging
+            sample_text = text[:200] + "..." if len(text) > 200 else text
+            result["sample_texts"].append(f"ID: {doc.get('message_id', 'unknown')} - {sample_text}")
         
         return result
         

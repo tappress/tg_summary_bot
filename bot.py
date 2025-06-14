@@ -78,6 +78,37 @@ async def cmd_status(message: Message):
     await message.answer(status, parse_mode="Markdown")
 
 
+@dp.message(Command("debug"))
+async def cmd_debug(message: Message):
+    """Debug search functionality"""
+    # Extract query from command
+    query = message.text.replace("/debug", "").strip()
+    
+    if not query:
+        await message.answer("Usage: /debug <search query>")
+        return
+        
+    try:
+        debug_info = await db.debug_search(message.chat.id, query)
+        
+        response = (
+            f"🐛 **Debug Search: '{query}'**\n\n"
+            f"💬 Total messages in chat: {debug_info['total_messages']}\n"
+            f"🔍 Text search results: {debug_info['text_search_results']}\n"
+            f"📝 Regex search results: {debug_info['regex_search_results']}\n\n"
+            f"📄 **Sample texts:**\n"
+        )
+        
+        for i, text in enumerate(debug_info['sample_texts'][:3], 1):
+            response += f"{i}. {text}\n"
+        
+        await message.answer(response, parse_mode="Markdown")
+        
+    except Exception as e:
+        logger.error(f"Debug command error: {e}")
+        await message.answer(f"Debug error: {str(e)}")
+
+
 @dp.message(Command("ask"))
 async def cmd_ask(message: Message):
     """Handle /ask command"""
