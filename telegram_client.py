@@ -19,12 +19,8 @@ class TelegramSearchClient:
         """Search messages in MongoDB"""
         limit = limit or self.config.max_messages_to_fetch
         
-        # Try text search first
+        # Search messages using vector database
         messages = await self.db.search_messages(chat_id, query, limit)
-        
-        # If no results, try regex search as fallback
-        if not messages:
-            messages = await self.db.search_messages_regex(chat_id, query, limit)
         
         return SearchResult(
             query=query,

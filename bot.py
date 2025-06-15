@@ -49,24 +49,24 @@ ask_cooldowns: Dict[int, datetime] = {}
 async def cmd_start(message: Message):
     """Handle /start command"""
     await message.answer(
-        "🤖 **Welcome to Summary Bot!**\n\n"
+        "🤖 <b>Welcome to Summary Bot!</b>\n\n"
         "I can help you search and summarize messages using AI.\n\n"
-        "**📝 Commands:**\n"
-        "• `/ask <question>` - Search and answer questions\n"
-        "• `/summary` - Summarize last 300 messages\n"
-        "• `/status` - Show bot health and queue status\n\n"
-        "**🔍 What I can do:**\n"
+        "<b>📝 Commands:</b>\n"
+        "• <code>/ask &lt;question&gt;</code> - Search and answer questions\n"
+        "• <code>/summary</code> - Summarize last 300 messages\n"
+        "• <code>/status</code> - Show bot health and queue status\n\n"
+        "<b>🔍 What I can do:</b>\n"
         "• Search through text messages\n"
         "• Extract and search text from images (OCR)\n"
         "• Answer in the same language you ask\n"
         "• Provide links to original messages\n\n"
-        "**⚠️ Important:**\n"
-        "I only know about messages sent **after** I was added to this chat. "
+        "<b>⚠️ Important:</b>\n"
+        "I only know about messages sent <b>after</b> I was added to this chat. "
         "I cannot search through old messages that were sent before I joined.\n\n"
-        "**📱 Example:**\n"
-        "`/ask what did John say about the meeting?`\n"
-        "`/ask коли буде наступна зустріч?`",
-        parse_mode="Markdown"
+        "<b>📱 Example:</b>\n"
+        "<code>/ask what did John say about the meeting?</code>\n"
+        "<code>/ask коли буде наступна зустріч?</code>",
+        parse_mode="HTML"
     )
 
 
@@ -77,13 +77,13 @@ async def cmd_status(message: Message):
     worker_count = len([w for w in ocr_workers if not w.done()])
     
     status = (
-        f"🤖 **Bot Status**\n"
+        f"🤖 <b>Bot Status</b>\n"
         f"📸 OCR Queue: {queue_size}/100\n"
         f"👷 Active Workers: {worker_count}\n"
         f"💾 Database: Connected"
     )
     
-    await message.answer(status, parse_mode="Markdown")
+    await message.answer(status, parse_mode="HTML")
 
 
 @dp.message(Command("debug"))
@@ -100,17 +100,16 @@ async def cmd_debug(message: Message):
         debug_info = await db.debug_search(message.chat.id, query)
         
         response = (
-            f"🐛 **Debug Search: '{query}'**\n\n"
+            f"🐛 <b>Debug Search: '{query}'</b>\n\n"
             f"💬 Total messages in chat: {debug_info['total_messages']}\n"
-            f"🔍 Text search results: {debug_info['text_search_results']}\n"
-            f"📝 Regex search results: {debug_info['regex_search_results']}\n\n"
-            f"📄 **Sample texts:**\n"
+            f"🔍 Vector search results: {debug_info.get('vector_search_results', 0)}\n\n"
+            f"📄 <b>Sample texts:</b>\n"
         )
         
         for i, text in enumerate(debug_info['sample_texts'][:3], 1):
             response += f"{i}. {text}\n"
         
-        await message.answer(response, parse_mode="Markdown")
+        await message.answer(response, parse_mode="HTML")
         
     except Exception as e:
         logger.error(f"Debug command error: {e}")
@@ -131,28 +130,28 @@ async def on_bot_added_to_chat(update: ChatMemberUpdated):
             # Only send welcome in groups/supergroups
             if chat.type in ['group', 'supergroup']:
                 welcome_message = (
-                    "👋 **Hello! I'm Summary Bot!**\n\n"
-                    f"I've been added to **{chat.title}** and I'm ready to help!\n\n"
-                    "**🔍 What I can do:**\n"
+                    "👋 <b>Hello! I'm Summary Bot!</b>\n\n"
+                    f"I've been added to <b>{chat.title}</b> and I'm ready to help!\n\n"
+                    "<b>🔍 What I can do:</b>\n"
                     "• Search and summarize your chat messages\n"
                     "• Extract text from images (OCR)\n"
                     "• Answer questions in multiple languages\n\n"
-                    "**📝 How to use:**\n"
-                    "• `/ask <question>` - Ask me anything about your chat\n"
-                    "• `/summary` - Get summary of recent chat activity\n"
-                    "• `/status` - Check my health status\n\n"
-                    "**⚠️ Important:**\n"
-                    "I only know about messages sent **after** this moment. "
+                    "<b>📝 How to use:</b>\n"
+                    "• <code>/ask &lt;question&gt;</code> - Ask me anything about your chat\n"
+                    "• <code>/summary</code> - Get summary of recent chat activity\n"
+                    "• <code>/status</code> - Check my health status\n\n"
+                    "<b>⚠️ Important:</b>\n"
+                    "I only know about messages sent <b>after</b> this moment. "
                     "I cannot search through old messages that were sent before I joined.\n\n"
-                    "**🚀 Try me:**\n"
-                    "`/ask what are we discussing?`\n"
-                    "`/ask коли буде зустріч?`"
+                    "<b>🚀 Try me:</b>\n"
+                    "<code>/ask what are we discussing?</code>\n"
+                    "<code>/ask коли буде зустріч?</code>"
                 )
                 
                 await bot.send_message(
                     chat_id=chat.id,
                     text=welcome_message,
-                    parse_mode="Markdown"
+                    parse_mode="HTML"
                 )
                 logger.info(f"Bot added to chat: {chat.title} (ID: {chat.id})")
                 
@@ -222,10 +221,10 @@ async def cmd_ask(message: Message):
         
         # Build response with links
         response_parts = [
-            f"🔍 *Search Query:* {search_query}",
-            f"📊 *Found:* {search_result.total_found} messages",
-            f"📝 *Answer:*\n\n{summary_result.output}",
-            "\n📌 *Messages:*"
+            f"🔍 <i>Search Query:</i> {search_query}",
+            f"📊 <i>Found:</i> {search_result.total_found} messages",
+            f"📝 <i>Answer:</i>\n\n{summary_result.output}",
+            "\n📌 <i>Messages:</i>"
         ]
         
         # Add links to messages
@@ -234,7 +233,7 @@ async def cmd_ask(message: Message):
                 # Public chat - create clickable link
                 link = f"https://t.me/{msg.chat_username}/{msg.id}"
                 response_parts.append(
-                    f"• [{msg.date.strftime('%d.%m %H:%M')}]({link}) - {msg.sender}"
+                    f"• <a href=\"{link}\">{msg.date.strftime('%d.%m %H:%M')}</a> - {msg.sender}"
                 )
             else:
                 # Private chat - just show info
@@ -243,7 +242,7 @@ async def cmd_ask(message: Message):
                 )
         
         response = "\n".join(response_parts)
-        await processing_msg.edit_text(response, parse_mode="Markdown", disable_web_page_preview=True)
+        await processing_msg.edit_text(response, parse_mode="HTML", disable_web_page_preview=True)
 
         logger.info(f"Ask processed for chat {chat_id}, cooldown updated")
         
@@ -309,13 +308,13 @@ async def cmd_summary(message: Message):
         time_range = f"{recent_messages[0].date.strftime('%d.%m %H:%M')} - {recent_messages[-1].date.strftime('%d.%m %H:%M')}"
         
         response = (
-            f"📊 **Chat Summary**\n\n"
-            f"📅 *Period:* {time_range}\n"
-            f"💬 *Messages analyzed:* {len(recent_messages)}\n\n"
-            f"📝 *Summary:*\n\n{summary_result.output}"
+            f"📊 <b>Chat Summary</b>\n\n"
+            f"📅 <i>Period:</i> {time_range}\n"
+            f"💬 <i>Messages analyzed:</i> {len(recent_messages)}\n\n"
+            f"📝 <i>Summary:</i>\n\n{summary_result.output}"
         )
         
-        await processing_msg.edit_text(response, parse_mode="Markdown")
+        await processing_msg.edit_text(response, parse_mode="HTML")
         
         logger.info(f"Summary generated for chat {chat_id}, cooldown updated")
         

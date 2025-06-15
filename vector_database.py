@@ -1,7 +1,7 @@
 import chromadb
 from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from config import Config
 from models import TelegramMessage
@@ -39,13 +39,19 @@ class VectorDatabase:
     
     def _create_metadata(self, message: TelegramMessage) -> dict:
         """Create metadata for the message"""
+        # Ensure date is timezone-aware
+        msg_date = message.date
+        if msg_date.tzinfo is None:
+            msg_date = msg_date.replace(tzinfo=timezone.utc)
+            
         return {
             "message_id": message.id,
             "chat_id": message.chat_id,
             "chat_username": message.chat_username or "",
             "sender": message.sender,
-            "date": message.date.isoformat(),
-            "created_at": datetime.utcnow().isoformat()
+            "date": msg_date.isoformat(),
+            "date_timestamp": int(msg_date.timestamp()),  # Numeric timestamp for filtering
+            "created_at": datetime.now(timezone.utc).isoformat()
         }
     
     async def save_message(self, message: TelegramMessage):
@@ -104,11 +110,16 @@ class VectorDatabase:
                     metadata = results['metadatas'][0][i]
                     document = results['documents'][0][i]
                     
+                    # Parse date and ensure it's timezone-aware
+                    msg_date = datetime.fromisoformat(metadata['date'])
+                    if msg_date.tzinfo is None:
+                        msg_date = msg_date.replace(tzinfo=timezone.utc)
+                    
                     message = TelegramMessage(
                         id=metadata['message_id'],
                         text=document,
                         sender=metadata['sender'],
-                        date=datetime.fromisoformat(metadata['date']),
+                        date=msg_date,
                         chat_id=metadata['chat_id'],
                         chat_username=metadata['chat_username'] if metadata['chat_username'] else None
                     )
@@ -121,12 +132,28 @@ class VectorDatabase:
             logger.error(f"Error searching messages in vector database: {e}")
             return []
     
-    async def get_recent_messages(self, chat_id: int, limit: int = 300) -> List[TelegramMessage]:
-        """Get recent messages from chat (sorted by date)"""
+    async def get_recent_messages(self, chat_id: int, limit: int = 300, days_back: int = 7) -> List[TelegramMessage]:
+        """Get recent messages from chat (sorted by date)
+        
+        Args:
+            chat_id: The chat ID to get messages from
+            limit: Maximum number of messages to return
+            days_back: How many days back to look for messages (default: 7)
+        """
         try:
-            # Get all messages for chat
+            # Calculate the timestamp threshold (in seconds)
+            date_threshold = datetime.now(timezone.utc) - timedelta(days=days_back)
+            timestamp_threshold = int(date_threshold.timestamp())
+            
+            # First try to get messages from the last N days using timestamp filter
+            # Check if date_timestamp field exists in metadata
             results = self.collection.get(
-                where={"chat_id": chat_id},
+                where={
+                    "$and": [
+                        {"chat_id": chat_id},
+                        {"date_timestamp": {"$gte": timestamp_threshold}}
+                    ]
+                },
                 include=["documents", "metadatas"]
             )
             
@@ -137,11 +164,16 @@ class VectorDatabase:
                     metadata = results['metadatas'][i]
                     document = results['documents'][i]
                     
+                    # Parse date and ensure it's timezone-aware
+                    msg_date = datetime.fromisoformat(metadata['date'])
+                    if msg_date.tzinfo is None:
+                        msg_date = msg_date.replace(tzinfo=timezone.utc)
+                    
                     message = TelegramMessage(
                         id=metadata['message_id'],
                         text=document,
                         sender=metadata['sender'],
-                        date=datetime.fromisoformat(metadata['date']),
+                        date=msg_date,
                         chat_id=metadata['chat_id'],
                         chat_username=metadata['chat_username'] if metadata['chat_username'] else None
                     )
@@ -149,14 +181,88 @@ class VectorDatabase:
             
             # Sort by date (newest first) and limit
             messages.sort(key=lambda x: x.date, reverse=True)
-            messages = messages[:limit]
             
-            # Return in chronological order (oldest first)
+            # If we didn't get enough messages from the time filter, fall back to getting all
+            if len(messages) < limit:
+                logger.info(f"Only found {len(messages)} messages in last {days_back} days, fetching more...")
+                # Get all messages for chat
+                all_results = self.collection.get(
+                    where={"chat_id": chat_id},
+                    include=["documents", "metadatas"]
+                )
+                
+                all_messages = []
+                if all_results['ids']:
+                    for i, doc_id in enumerate(all_results['ids']):
+                        metadata = all_results['metadatas'][i]
+                        document = all_results['documents'][i]
+                        
+                        # Parse date and ensure it's timezone-aware
+                        msg_date = datetime.fromisoformat(metadata['date'])
+                        if msg_date.tzinfo is None:
+                            msg_date = msg_date.replace(tzinfo=timezone.utc)
+                        
+                        message = TelegramMessage(
+                            id=metadata['message_id'],
+                            text=document,
+                            sender=metadata['sender'],
+                            date=msg_date,
+                            chat_id=metadata['chat_id'],
+                            chat_username=metadata['chat_username'] if metadata['chat_username'] else None
+                        )
+                        all_messages.append(message)
+                
+                # Sort by date and take the limit
+                all_messages.sort(key=lambda x: x.date, reverse=True)
+                messages = all_messages[:limit]
+            else:
+                # We have enough messages, just limit them
+                messages = messages[:limit]
+            
+            # Return in chronological order (oldest first) for summary
             return list(reversed(messages))
             
         except Exception as e:
             logger.error(f"Error getting recent messages from vector database: {e}")
-            return []
+            # Fallback to simple approach if the complex query fails
+            try:
+                logger.info("Falling back to simple query without date filter")
+                results = self.collection.get(
+                    where={"chat_id": chat_id},
+                    include=["documents", "metadatas"]
+                )
+                
+                messages = []
+                if results['ids']:
+                    for i, doc_id in enumerate(results['ids']):
+                        metadata = results['metadatas'][i]
+                        document = results['documents'][i]
+                        
+                        # Handle legacy messages without date_timestamp
+                        # Parse date and ensure it's timezone-aware
+                        msg_date = datetime.fromisoformat(metadata['date'])
+                        if msg_date.tzinfo is None:
+                            msg_date = msg_date.replace(tzinfo=timezone.utc)
+                        
+                        message = TelegramMessage(
+                            id=metadata['message_id'],
+                            text=document,
+                            sender=metadata['sender'],
+                            date=msg_date,
+                            chat_id=metadata['chat_id'],
+                            chat_username=metadata['chat_username'] if metadata['chat_username'] else None
+                        )
+                        messages.append(message)
+                
+                # Sort by date (newest first) and limit
+                messages.sort(key=lambda x: x.date, reverse=True)
+                messages = messages[:limit]
+                
+                # Return in chronological order (oldest first)
+                return list(reversed(messages))
+            except Exception as fallback_error:
+                logger.error(f"Fallback query also failed: {fallback_error}")
+                return []
     
     async def get_message_count(self, chat_id: int) -> int:
         """Get total message count for a chat"""
