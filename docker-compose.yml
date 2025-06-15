@@ -17,15 +17,33 @@ services:
     networks:
       - bot_network
 
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: tg_bot_chromadb
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - ANONYMIZED_TELEMETRY=FALSE
+    networks:
+      - bot_network
+
   bot:
     build: .
     container_name: tg_summary_bot
     restart: unless-stopped
     depends_on:
       - mongodb
+      - chromadb
     environment:
       - MONGODB_URL=mongodb://admin:password@mongodb:27017
       - MONGODB_DATABASE=telegram_bot
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
     env_file:
       - .env
     networks:
@@ -36,6 +54,7 @@ services:
 volumes:
   mongodb_data:
   mongodb_config:
+  chroma_data:
 
 networks:
   bot_network:

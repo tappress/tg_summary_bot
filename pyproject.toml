@@ -12,4 +12,6 @@ dependencies = [
     "easyocr>=1.7.0",
     "pillow>=10.0.0",
     "numpy>=1.24.0",
+    "chromadb>=0.4.22",
+    "sentence-transformers>=2.2.2",
 ]
