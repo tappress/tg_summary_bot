@@ -37,6 +37,27 @@ class MessageDatabase:
             if "duplicate key error" not in str(e):
                 print(f"Error saving message: {e}")
                 
+    async def get_recent_messages(self, chat_id: int, limit: int = 300) -> List[TelegramMessage]:
+        """Get the most recent messages from a chat"""
+        messages = []
+        
+        cursor = self.messages_collection.find(
+            {"chat_id": chat_id}
+        ).sort("date", -1).limit(limit)
+        
+        async for doc in cursor:
+            messages.append(TelegramMessage(
+                id=doc["message_id"],
+                text=doc["text"],
+                sender=doc["sender"],
+                date=doc["date"],
+                chat_id=doc["chat_id"],
+                chat_username=doc.get("chat_username")
+            ))
+        
+        # Return in chronological order (oldest first)
+        return list(reversed(messages))
+    
     async def search_messages(self, chat_id: int, query: str, limit: int = 10) -> List[TelegramMessage]:
         """Search messages in the database with improved search logic"""
         messages = []

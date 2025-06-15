@@ -2,7 +2,8 @@ import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
-from typing import Tuple
+from typing import Tuple, Dict
+from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import Message, ContentType, ChatMemberUpdated
@@ -37,6 +38,12 @@ executor = ThreadPoolExecutor(max_workers=2)
 ocr_queue: asyncio.Queue[Tuple[Message, bytes]] = asyncio.Queue(maxsize=100)
 ocr_workers = []
 
+# Rate limiting for summary command (chat_id -> last_summary_time)
+summary_cooldowns: Dict[int, datetime] = {}
+
+# Rate limiting for ask command (chat_id -> last_ask_time)
+ask_cooldowns: Dict[int, datetime] = {}
+
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
@@ -46,6 +53,7 @@ async def cmd_start(message: Message):
         "I can help you search and summarize messages using AI.\n\n"
         "**📝 Commands:**\n"
         "• `/ask <question>` - Search and answer questions\n"
+        "• `/summary` - Summarize last 300 messages\n"
         "• `/status` - Show bot health and queue status\n\n"
         "**🔍 What I can do:**\n"
         "• Search through text messages\n"
@@ -131,6 +139,7 @@ async def on_bot_added_to_chat(update: ChatMemberUpdated):
                     "• Answer questions in multiple languages\n\n"
                     "**📝 How to use:**\n"
                     "• `/ask <question>` - Ask me anything about your chat\n"
+                    "• `/summary` - Get summary of recent chat activity\n"
                     "• `/status` - Check my health status\n\n"
                     "**⚠️ Important:**\n"
                     "I only know about messages sent **after** this moment. "
@@ -163,7 +172,25 @@ async def cmd_ask(message: Message):
         
     # Get chat ID
     chat_id = message.chat.id
+    current_time = datetime.now()
     
+    # Check rate limiting (10 seconds cooldown)
+    if chat_id in ask_cooldowns:
+        last_ask = ask_cooldowns[chat_id]
+        time_diff = current_time - last_ask
+        cooldown_remaining = timedelta(seconds=10) - time_diff
+        
+        if cooldown_remaining.total_seconds() > 0:
+            seconds_remaining = int(cooldown_remaining.total_seconds())
+            await message.answer(
+                f"⏳ Ask command is on cooldown. "
+                f"Please wait {seconds_remaining}s before using it again."
+            )
+            return
+
+    # Update cooldown
+    ask_cooldowns[chat_id] = current_time
+
     try:
         # Send initial processing message that we'll edit later
         processing_msg = await message.answer("📱 Searching...")
@@ -217,10 +244,84 @@ async def cmd_ask(message: Message):
         
         response = "\n".join(response_parts)
         await processing_msg.edit_text(response, parse_mode="Markdown", disable_web_page_preview=True)
+
+        logger.info(f"Ask processed for chat {chat_id}, cooldown updated")
         
     except Exception as e:
         logger.error(f"Error processing /ask command: {e}")
         await message.answer(f"An error occurred: {str(e)}")
+
+
+@dp.message(Command("summary"))
+async def cmd_summary(message: Message):
+    """Handle /summary command - summarize last 300 messages"""
+    chat_id = message.chat.id
+    current_time = datetime.now()
+    
+    # Check rate limiting (5 minutes cooldown)
+    if chat_id in summary_cooldowns:
+        last_summary = summary_cooldowns[chat_id]
+        time_diff = current_time - last_summary
+        cooldown_remaining = timedelta(minutes=5) - time_diff
+        
+        if cooldown_remaining.total_seconds() > 0:
+            minutes_remaining = int(cooldown_remaining.total_seconds() / 60)
+            seconds_remaining = int(cooldown_remaining.total_seconds() % 60)
+            await message.answer(
+                f"⏳ Summary command is on cooldown. "
+                f"Please wait {minutes_remaining}m {seconds_remaining}s before using it again."
+            )
+            return
+
+    # Update cooldown
+    summary_cooldowns[chat_id] = current_time
+
+    try:
+        # Send initial processing message
+        processing_msg = await message.answer("📊 Analyzing recent messages...")
+        
+        # Get recent messages from database
+        recent_messages = await db.get_recent_messages(chat_id, limit=300)
+        
+        if not recent_messages:
+            await processing_msg.edit_text("No messages found in this chat.")
+            return
+        
+        if len(recent_messages) < 2:
+            await processing_msg.edit_text(f"Only {len(recent_messages)} messages found. Need at least 10 messages for a meaningful summary.")
+            return
+        
+        # Format messages for AI analysis
+        messages_text = "\n\n".join([
+            f"[{msg.date.strftime('%Y-%m-%d %H:%M')}] {msg.sender}: {msg.text}"
+            for msg in recent_messages
+        ])
+        
+        # Generate summary using Pydantic AI
+        summary_result = await summary_agent.run(
+            f"Please provide a comprehensive summary of this chat conversation. "
+            f"Include main topics discussed, key decisions made, and important information shared. "
+            f"Respond in the same language as the majority of messages.\n\n"
+            f"Messages:\n{messages_text}"
+        )
+        
+        # Build response
+        time_range = f"{recent_messages[0].date.strftime('%d.%m %H:%M')} - {recent_messages[-1].date.strftime('%d.%m %H:%M')}"
+        
+        response = (
+            f"📊 **Chat Summary**\n\n"
+            f"📅 *Period:* {time_range}\n"
+            f"💬 *Messages analyzed:* {len(recent_messages)}\n\n"
+            f"📝 *Summary:*\n\n{summary_result.output}"
+        )
+        
+        await processing_msg.edit_text(response, parse_mode="Markdown")
+        
+        logger.info(f"Summary generated for chat {chat_id}, cooldown updated")
+        
+    except Exception as e:
+        logger.error(f"Error processing /summary command: {e}")
+        await message.answer(f"An error occurred while generating summary: {str(e)}")
 
 
 async def ocr_worker(worker_id: int):
